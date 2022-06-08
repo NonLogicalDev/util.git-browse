@@ -4,49 +4,6 @@ import (
 	"strings"
 )
 
-// var (
-// 	gitCMD = shell.Cmd("git").OutputFn()
-// )
-
-// func getGitPathFromRoot(path string) string {
-// 	fPath, _ := filepath.Abs(path)
-// 	rPath, _ := gitCMD("rev-parse", "--show-toplevel")
-// 	relPath, _ := filepath.Rel(rPath, fPath)
-
-// 	return filepath.Clean(relPath)
-// }
-
-//type gitConfigKV struct {
-//	Key   string
-//	Value string
-//}
-
-// func gitSHConfigKVMatchinRegexp(regexp string) ([]gitConfigKV, error) {
-// 	// output, err := gitSH("config", "--get-regexp", "browse\\..*")
-// 	output, err := gitutils.GitExec("config", "--get-regexp", regexp)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	configLines := strings.Split(output, "\n")
-// 	for _, configLine := range configLines {
-// 		key, value, ok := stringCut(configLine, "")
-// 		if !ok {
-// 			continue
-// 		}
-// 	}
-// }
-
-//------------------------------------------------------------------------------
-
-//func stringCut(s string, sep string) (k, v string, ok bool) {
-//	idx := strings.Index(s, sep)
-//	if idx != -1 {
-//		return "", "", false
-//	}
-//	return s[:idx], s[idx+1:], true
-//}
-
 func parseConfigLine(line string) (key, value string) {
 	key, value, _ = strings.Cut(line, " ")
 	return

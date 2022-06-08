@@ -5,12 +5,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
-	"runtime"
 	"strconv"
 
-	"github.com/sanity-io/litter"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"EXP/pkg/config"
 	"EXP/pkg/gitutils"
@@ -34,72 +32,53 @@ func cmdRoot() *cobra.Command {
 	return cmd
 }
 
+func registerURLFlags(flg *pflag.FlagSet) (service *string, ref *string) {
+	service = flg.String(
+		"service", "",
+		"select service, if other than default",
+	)
+	ref = flg.String(
+		"ref", "",
+		"select git ref, if other than default",
+	)
+	return service, ref
+}
+
 func cmdURL() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "url [FILEPATH] [LineStart] [LineEnd]",
+		Use:   "url FILEPATH [LineStart] [LineEnd]",
 		Short: "output url for a file in remote browser or repo",
 	}
-	cmd.Run = func(cmd *cobra.Command, args []string) {
-		args = getArgs(3, args)
+	service, ref := registerURLFlags(cmd.PersistentFlags())
 
-		path := args[0]
-		lineS, _ := strconv.Atoi(args[1])
-		lineE, _ := strconv.Atoi(args[2])
-
-		if len(path) == 0 {
-			path = "."
-		}
-		relPath, _ := gitutils.GetRelativePath(path)
-
-		isDir := false
-		pathStat, err := os.Stat(path)
-		if err == nil {
-			isDir = pathStat.IsDir()
-		}
-
-		cfg, _ := config.ParseConfig()
-		url, err := cfg.GetURL("", relPath, isDir, lineS, lineE)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		url, err := getURL(args, service, ref)
 		if err != nil {
-			fmt.Println("err:", err)
-			return
+			return err
 		}
+
 		fmt.Println(url)
+		return nil
 	}
 	return cmd
 }
 
 func cmdOpen() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "open",
+		Use:   "open FILEPATH [LineStart] [LineEnd]",
 		Short: "open the url for a file in remote browser or repo",
 	}
-	cmd.Run = func(cmd *cobra.Command, args []string) {
-		args = getArgs(3, args)
+	service, ref := registerURLFlags(cmd.PersistentFlags())
 
-		path := args[0]
-		lineS, _ := strconv.Atoi(args[1])
-		lineE, _ := strconv.Atoi(args[2])
-
-		if len(path) == 0 {
-			path = "."
-		}
-		relPath, _ := gitutils.GetRelativePath(path)
-
-		isDir := false
-		pathStat, err := os.Stat(path)
-		if err == nil {
-			isDir = pathStat.IsDir()
-		}
-
-		cfg, _ := config.ParseConfig()
-		url, err := cfg.GetURL("", relPath, isDir, lineS, lineE)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		url, err := getURL(args, service, ref)
 		if err != nil {
-			fmt.Println("err:", err)
-			return
+			return err
 		}
 		if len(url) != 0 {
 			openInBrowser(url)
 		}
+		return nil
 	}
 	return cmd
 }
@@ -109,36 +88,87 @@ func cmdConfig() *cobra.Command {
 		Use:   "config",
 		Short: "print current config",
 	}
-	cmd.Run = func(cmd *cobra.Command, args []string) {
-		cfg, _ := config.ParseConfig()
-		litter.Dump(cfg)
+
+	flg := cmd.PersistentFlags()
+	format := flg.String("format", "gitconfig", "config format (gitconfig | cli | json). Default: gitconfig")
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		rawCfg, err := loadRawConfig()
+		if err != nil {
+			return err
+		}
+
+		cfg, err := config.ParseGitConfig(rawCfg)
+		if err != nil {
+			return err
+		}
+
+		switch *format {
+		case "gitconfig":
+			fmt.Println(cfg.Dump(config.DumpGitconfig))
+		case "cli":
+			fmt.Println(cfg.Dump(config.DumpCli))
+		case "json":
+			fmt.Println(cfg.Dump(config.DumpJson))
+		default:
+			return fmt.Errorf("unknown config format %v", *format)
+		}
+
+		return nil
 	}
 	return cmd
 }
 
-// https://gist.github.com/hyg/9c4afcd91fe24316cbf0
-func openInBrowser(url string) {
-	var err error
+func getURL(args []string, service *string, ref *string) (string, error) {
+	args = getArgs(3, args)
 
-	switch runtime.GOOS {
-	case "linux":
-		fmt.Println("openning...", url)
-		err = exec.Command("xdg-open", url).Start()
-	case "windows":
-		fmt.Println("openning...", url)
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	case "darwin":
-		fmt.Println("openning...", url)
-		err = exec.Command("open", url).Start()
-	default:
-		err = fmt.Errorf("unsupported platform")
+	path := args[0]
+	lineS, _ := strconv.Atoi(args[1])
+	lineE, _ := strconv.Atoi(args[2])
+
+	if len(path) == 0 {
+		path = "."
 	}
+
+	relPath, isDir, err := gitutils.GetPathInfo(path)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
+
+	rawCfg, err := loadRawConfig()
+	if err != nil {
+		return "", err
+	}
+
+	cfg, err := config.ParseGitConfig(rawCfg)
+	if err != nil {
+		return "", err
+	}
+
+	url, err := cfg.URLFor(config.URLOpt{
+		Service: *service,
+		Ref:     *ref,
+		Path:    relPath,
+
+		IsDir: isDir,
+
+		LineS: lineS,
+		LineE: lineE,
+	})
+	if err != nil {
+		return "", err
+	}
+	return url, nil
 }
 
+func loadRawConfig() (string, error) {
+	return gitutils.GitExec("config", "--get-regexp", "browse\\..*")
+}
 func main() {
 	log.Default().SetOutput(ioutil.Discard)
-	_ = cmdRoot().Execute()
+	err := cmdRoot().Execute()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
