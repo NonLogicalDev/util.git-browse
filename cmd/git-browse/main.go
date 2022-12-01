@@ -7,11 +7,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
-
 	"EXP/pkg/config"
 	"EXP/pkg/gitutils"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"golang.org/x/xerrors"
 )
 
 func getArgs(n int, args []string) []string {
@@ -132,17 +132,17 @@ func getURL(args []string, service *string, ref *string) (string, error) {
 
 	relPath, isDir, err := gitutils.GetPathInfo(path)
 	if err != nil {
-		return "", err
+		return "", xerrors.Errorf("failed fetching git relative path: %w", err)
 	}
 
 	rawCfg, err := loadRawConfig()
 	if err != nil {
-		return "", err
+		return "", xerrors.Errorf("failed loading git configuration: %w", err)
 	}
 
 	cfg, err := config.ParseGitConfig(rawCfg)
 	if err != nil {
-		return "", err
+		return "", xerrors.Errorf("failed parsing git configuration: %w", err)
 	}
 
 	url, err := cfg.URLFor(config.URLOpt{
@@ -156,7 +156,7 @@ func getURL(args []string, service *string, ref *string) (string, error) {
 		LineE: lineE,
 	})
 	if err != nil {
-		return "", err
+		return "", xerrors.Errorf("failed rendering url: %w", err)
 	}
 	return url, nil
 }
@@ -164,11 +164,14 @@ func getURL(args []string, service *string, ref *string) (string, error) {
 func loadRawConfig() (string, error) {
 	return gitutils.GitExec("config", "--get-regexp", "browse\\..*")
 }
+
 func main() {
 	log.Default().SetOutput(ioutil.Discard)
-	err := cmdRoot().Execute()
+	cmd := cmdRoot()
+	err := cmd.Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		cmd.PrintErrf("TRACE: %+v", err)
 		os.Exit(1)
+
 	}
 }

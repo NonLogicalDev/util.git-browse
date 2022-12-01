@@ -2,7 +2,7 @@ package gitutils
 
 import (
 	"bytes"
-	"fmt"
+	"golang.org/x/xerrors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +18,7 @@ func GitExec(args ...string) (string, error) {
 
 	out, err := cmd.Output()
 	if err != nil {
-		return string(out), fmt.Errorf(
+		return string(out), xerrors.Errorf(
 			"command `git %s` failed with exit code %d and output:\n%s",
 			strings.Join(args, " "), cmd.ProcessState.ExitCode(), stderr.String(),
 		)
@@ -28,30 +28,20 @@ func GitExec(args ...string) (string, error) {
 }
 
 func GetPathInfo(path string) (relPath string, isDir bool, err error) {
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("GetPathInfo(%#v): %w", path, err)
-		}
-	}()
-
 	repoPath, err := GitExec("rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", false, nil
+		return "", false, xerrors.Errorf("failed fetching git top-level dir: %w", err)
 	}
+	repoPath = strings.Trim(repoPath, "\n")
 
 	absPath, _ := filepath.Abs(path)
 	relPath, err = filepath.Rel(repoPath, absPath)
-
-	fmt.Println(path)
-	fmt.Println(absPath)
-	fmt.Println(repoPath)
-	fmt.Println(relPath)
-
 	if err != nil {
-		return "", false, err
+		return "", false, xerrors.Errorf("failed computing relative path: %w", err)
 	}
+
 	if strings.Contains(relPath, "..") {
-		return "", false, fmt.Errorf("path %#v is not in the repo", relPath)
+		return "", false, xerrors.Errorf("path %#v is not in the repo", relPath)
 	}
 
 	pathStat, err := os.Stat(path)

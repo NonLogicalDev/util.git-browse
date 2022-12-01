@@ -2,8 +2,8 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/Masterminds/sprig"
+	"golang.org/x/xerrors"
 	"strings"
 	"text/template"
 )
@@ -126,7 +126,7 @@ func (cfg Config) URLFor(o URLOpt) (string, error) {
 
 	serviceConfig, ok := cfg.Services[targetService]
 	if !ok {
-		return "", fmt.Errorf("service(%v): not configured", targetService)
+		return "", xerrors.Errorf("service(%v): not configured", targetService)
 	}
 
 	targetRef := serviceConfig.Ref
@@ -145,7 +145,7 @@ func (cfg Config) URLFor(o URLOpt) (string, error) {
 		Funcs(sprig.TxtFuncMap()).
 		Parse(templateRaw)
 	if err != nil {
-		return "", fmt.Errorf("service(%v): failed parsing template '%v': %w", targetService, templateRaw, err)
+		return "", xerrors.Errorf("service(%v): failed parsing template '%v': %w", targetService, templateRaw, err)
 	}
 
 	c := templateURLContext{
